@@ -67,6 +67,66 @@ def multithreaded_get_vendors_and_pagecounts(urls):
     return vendors, pageCounts
 
 
+def get_train_data(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    titles = soup.find_all("span", class_="velky15")
+    titles = [title["title"].strip() for title in titles]
+    route = soup.find("div", class_="trasa jizdnirad2")
+    route = route.contents[1].strip()
+    stops_with_times = route.split(" - ")
+    stops = []
+    times = []
+    for stop in stops_with_times:
+        if ":" in stop:
+            # stop has time, need to separate the rightmost
+            # part of the string
+
+            parts = stop.split(" ")
+            stops.append(" ".join(parts[:-1]))
+            time = parts[-1]
+            if ("-" in time):
+                # time range given, take the first one
+                time = time.split("-")[0]
+            elif ("/" in time):
+                # strip out parentheses
+                time = time[1:-1]
+                # multiple times given, take the first one
+                time = time.split("/")[0]
+            times.append(time)
+        else:
+            # stop does not have time
+            stops.append(stop)
+            times.append(None)
+
+    # some times may be None, sometimes mulitple in a row,
+    # interpolation needed between the given times
+
+    while None in times:
+        # find the first None
+        firstNone = times.index(None)
+        # find the previous time
+        prevTime = None
+        for i in range(firstNone, -1, -1):
+            if times[i] is not None:
+                prevTime = times[i]
+                break
+        # find the next time
+        nextTime = None
+        for i in range(firstNone, len(times)):
+            if times[i] is not None:
+                nextTime = times[i]
+                break
+
+        # interpolate between the two times
+        
+
+
+    print(stops)
+    print(times)
+
+
+
 def get_vendor_page_data(vendor, page):
     url = "https://www.vagonweb.cz/razeni/razeni.php?rok=2024&zeme=" + vendor + "&s=" + str(page)
     # print(url)
@@ -80,7 +140,7 @@ def get_vendor_page_data(vendor, page):
         param = train['onclick'].split("'")[1]
         train_links.append("https://www.vagonweb.cz/razeni/" + param)
 
-    print(train_links[0])
+    get_train_data(train_links[29])
 
 
 def main(data_count=5000):
