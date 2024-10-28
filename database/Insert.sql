@@ -3,42 +3,42 @@ GO
 
 
 
-EXEC xp_fileexist 'C:\Users\annap\OneDrive\Dokumenty\SQL Server Management Studio\output';
+EXEC xp_fileexist 'path\output';
 
 
 BULK INSERT dbo.Maszynista 
-FROM 'C:\Users\annap\Downloads\output\output\driver_data.csv' 
+FROM 'path\driver_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 BULK INSERT dbo.Pociag 
-FROM 'C:\Users\annap\Downloads\output\output\train_data.csv' 
+FROM 'path\train_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 BULK INSERT dbo.Stacja 
-FROM 'C:\Users\annap\Downloads\output\output\stop_data.csv' 
+FROM 'path\stop_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 
 
 BULK INSERT dbo.Odcinek 
-FROM 'C:\Users\annap\Downloads\output\output\section_data.csv' 
+FROM 'path\section_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 
 
 BULK INSERT dbo.Kurs 
-FROM 'C:\Users\annap\Downloads\output\output\relation_data.csv' 
+FROM 'path\relation_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 
 
 
 BULK INSERT dbo.Realizacja 
-FROM 'C:\Users\annap\Downloads\output\output\realisation_data.csv' 
+FROM 'path\realisation_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 BULK INSERT dbo.Awaria 
-FROM 'C:\Users\annap\Downloads\output\output\fault_data.csv' 
+FROM 'path\fault_data.csv' 
 WITH (FIELDTERMINATOR=',', ROWTERMINATOR = '\n', FIRSTROW = 2)
 
 
