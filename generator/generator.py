@@ -186,8 +186,10 @@ def get_city_from_stop(stop):
 class ThreadedTrainDataCollection:
     def __init__(self):
         self.manager = Manager()
-        self.lock = self.manager.Lock() 
+        self.lock = self.manager.Lock()
         self.train_titles = []
+        self.is_broken = []
+        self.last_fault = []
 
     def add_train_data(self, train_title):
         toReturn = None
@@ -195,12 +197,21 @@ class ThreadedTrainDataCollection:
             if train_title in self.train_titles:
                 return -1
             self.train_titles.append(train_title)
+            self.is_broken.append(False)
+            self.last_fault.append(datetime.datetime("1900-01-01"))
             toReturn = len(self.train_titles) - 1
         return toReturn
 
+    def load_train_breaks_and_faults(self, breaks, faults):
+        with self.lock:
+            self.is_broken = breaks
+            self.last_fault = faults
+
     def output_to_csv(self, filename):
         df = pd.DataFrame({
-            "Train Title": self.train_titles
+            "Train Title": self.train_titles,
+            "Last Fault": self.last_fault,
+            "Is Broken": self.is_broken
         })
 
         df.index.name = "Index"
@@ -232,7 +243,14 @@ class ThreadedStopDataCollection:
                 return self.stop_data.index(stop)
             self.stop_data.append(stop)
             self.stop_cities.append(get_city_from_stop(stop))
-            self.stop_addresses.append(self.fake.address())
+            address = self.fake.address().replace("\n", " ")
+            # remove everything after the rightmost digit
+            index = len(address) - 1
+            while index >= 0 and not address[index].isdigit():
+                index -= 1
+            if index != -1:
+                address = address[:index + 1]
+            self.stop_addresses.append(address)
             platform_count = random.randint(1, 10)
             self.platform_counts.append(platform_count)
             self.platform_track_counts.append(platform_count * 2)
@@ -259,7 +277,7 @@ class ThreadedStopDataCollection:
             self.stop_cities = [get_city_from_stop(stop) for stop in self.stop_data]
         else:
             self.stop_cities = df["Stop City"].tolist()
-        
+
         # if "Stop Address" is not in the csv file, generate it
         if "Stop Address" not in df.columns:
             # make addresses, remove newlines
@@ -358,7 +376,6 @@ class ThreadedDriverDataCollection:
             self.driver_names.append(name)
             self.driver_surnames.append(surname)
             self.driver_phone_numbers.append(self.fake.phone_number())
-            iteration = (self.iteration % 1000) + 1
             toReturn = pesel
         return toReturn
 
@@ -435,10 +452,10 @@ class ThreadedRealisationDataCollection:
             if realisation_data in self.realisation_data:
                 return self.realisation_data.index(realisation_data)
             self.realisation_data.append(realisation_data)
-            planned_arrival = planned_arrival.replace("(","")
-            planned_arrival = planned_arrival.replace(")","")
-            planned_departure = planned_departure.replace("(","")
-            planned_departure = planned_departure.replace(")","")
+            planned_arrival = planned_arrival.replace("(", "")
+            planned_arrival = planned_arrival.replace(")", "")
+            planned_departure = planned_departure.replace("(", "")
+            planned_departure = planned_departure.replace(")", "")
             self.realisation_planned_times.append((planned_arrival, planned_departure))
             toReturn = len(self.realisation_data) - 1
         return toReturn
@@ -496,7 +513,7 @@ class DataOrchestrator:
             return
         relation_index = self.add_relation_data(self.add_driver(), train_index)
         for i in range(len(stops) - 1):
-            section_index = self.add_section_data(stops[i], stops[i + 1]) 
+            section_index = self.add_section_data(stops[i], stops[i + 1])
             self.add_realisation_data(section_index, relation_index, times[i], times[i + 1])
 
     def output_to_csv(self, folder_name):
@@ -775,7 +792,7 @@ def stops_and_times_from_route(route, v=""):
 
     stops, times = parse_stops_and_times(stops_with_times, v)
     times = interpolate_times(times, v)
-    if times == None:
+    if times is None:
         return None, None
     return stops, times
 
@@ -788,7 +805,7 @@ def get_train_data(url, v=""):
     if titles == []:
         # no title found, using secondary method
         title_container = soup.find(id="stred0")
-        if title_container == None:
+        if title_container is None:
             return None, None, None
         hc = title_container.contents[1].contents[1].contents[2].contents[0].contents[0]
         if len(hc.contents) <= 1:
@@ -796,7 +813,7 @@ def get_train_data(url, v=""):
         vendor = hc.contents[1].get('title')
         number = hc.contents[2].strip()
         if (len(hc.contents) > 3):
-            if type(hc.contents[3].contents[0]) == str:
+            if type(hc.contents[3].contents[0]) is str:
                 name = hc.contents[3].contents[0]
             else:
                 return None, None, None
@@ -810,7 +827,7 @@ def get_train_data(url, v=""):
     # some times may be None, sometimes mulitple in a row,
     # interpolation needed between the given times
     stops, times = stops_and_times_from_route(route)
-    if stops == None:
+    if stops is None:
         return titles, None, None
     return titles, stops, times
 
@@ -826,8 +843,8 @@ def get_vendor_page_data(vendor, page, data_orchestrator):
         param = train['onclick'].split("'")[1]
         train_link = "https://www.vagonweb.cz/razeni/" + param
         titles_t, stops_t, times_t = get_train_data(train_link, vendor)
-        if stops_t == None or times_t == None:
-            if titles_t == None:
+        if stops_t is None or times_t is None:
+            if titles_t is None:
                 printv(vendor, "Skipping train with no data.")
             else:
                 printv(vendor, "Skipping train " + titles_t[0])
@@ -860,6 +877,8 @@ def generate_single_realisation(data_object, current_day):
     planned_times_r = []
     real_times = []
     faults = []
+    is_broken = False
+    last_fault = datetime.datetime("1900-01-01")
     overall_delay = 0
     fault_caused_delay = 0
     # number of times a day has passed during the relation
@@ -892,6 +911,8 @@ def generate_single_realisation(data_object, current_day):
                     "index": i,
                 })
                 fault_caused_delay += random.randint(2, 14)
+                is_broken = True
+                last_fault = planned_arrival_datetime
         real_departure = planned_departure_datetime + datetime.timedelta(minutes=overall_delay)
         overall_delay += delay
         real_arrival = planned_arrival_datetime + datetime.timedelta(minutes=overall_delay)
@@ -907,7 +928,7 @@ def generate_single_realisation(data_object, current_day):
         "planned_times": [(planned_time[0].strftime("%Y-%m-%d %H:%M:%S"), planned_time[1].strftime("%Y-%m-%d %H:%M:%S")) for planned_time in planned_times_r],
         "real_times": [(real_time[0].strftime("%Y-%m-%d %H:%M:%S"), real_time[1].strftime("%Y-%m-%d %H:%M:%S")) for real_time in real_times]
     }
-    return returnObject, faults
+    return returnObject, faults, is_broken, last_fault
 
 
 def save_realisation_data(data, folder_name, file_name):
@@ -928,7 +949,7 @@ def save_fault_data(data, folder_name, file_name):
     df = pd.DataFrame({
         "Type": [fault["type"] for fault in data],
         "Description": [fault["description"] for fault in data],
-        "Reason": [fault["reason"] for fault in data], 
+        "Reason": [fault["reason"] for fault in data],
         "Realisation Index": [fault["realisation_index"] for fault in data],
     })
 
@@ -964,9 +985,6 @@ def monthly_summary_of_driver_hours(driver_data_collection, relation_data_collec
     real_arrivals = [realisation["real_arrival"] for realisation in realisation_data]
     real_departures = [realisation["real_departure"] for realisation in realisation_data]
     relation_indexes = [realisation["relation_index"] for realisation in realisation_data]
-    
-    numbers_months_skipped = 0
-    do_continue = True
 
     data = {}
 
@@ -975,7 +993,7 @@ def monthly_summary_of_driver_hours(driver_data_collection, relation_data_collec
         # convert strings to datetime objects
         real_arrival = datetime.datetime.strptime(real_arrivals[i], "%Y-%m-%d %H:%M:%S")
         real_departure = datetime.datetime.strptime(real_departures[i], "%Y-%m-%d %H:%M:%S")
-        
+
         year = real_arrival.year
         month = real_arrival.month
 
@@ -1030,6 +1048,7 @@ def generate_real_realisations(threadpool, data_orchestrator, data_count_1, data
     # consolidate the data by relation index found in realisation_data
     # find the maximum relation index
     max_relation_index = max([relation_index for section_index, relation_index in realisation_data])
+    train_data = data_orchestrator.train_data_collection.train_data
     relations = []
     for i in range(max_relation_index + 1):
         data_object = {
@@ -1038,14 +1057,16 @@ def generate_real_realisations(threadpool, data_orchestrator, data_count_1, data
             "planned_times": [],
             "next_day_to_calculate": starting_date
         }
-        for l in range(len(realisation_data)):
-            if realisation_data[l][1] == i:
-                data_object["section_indexes"].append(realisation_data[l][0])
-                data_object["planned_times"].append(planned_times[l])
+        for k in range(len(realisation_data)):
+            if realisation_data[k][1] == i:
+                data_object["section_indexes"].append(realisation_data[k][0])
+                data_object["planned_times"].append(planned_times[k])
         relations.append(data_object)
     # generate real data
     data = []
     faults = []
+    train_faults = [False for i in range(len(train_data))]
+    last_faults = [datetime.datetime(1900, 1, 1) for i in range(len(train_data))]
     current_day = starting_date
     point_1_saved = False
     while len(data) < data_count_2:
@@ -1079,14 +1100,20 @@ def generate_real_realisations(threadpool, data_orchestrator, data_count_1, data
                     if fault_object is not None:
                         fault_object["realisation_index"] = len(data) - 1
                         faults.append(fault_object)
+                trainIndex = data_orchestrator.relation_data_collection.relation_data[relation_index][1]
+                if result[2] is True:
+                    train_faults[trainIndex] = True
+                    last_faults[trainIndex] = result[3]
 
         current_day += datetime.timedelta(days=1)
         if len(data) >= data_count_1 and not point_1_saved:
+            data_orchestrator.train_data_collection.load_train_breaks_and_faults(train_faults, last_faults)
             save_realisation_data(data, folder_name + '/output', "realisation_data_1.csv")
             save_fault_data(faults, folder_name + '/output', "fault_data_1.csv")
             monthly_summary_of_driver_hours(data_orchestrator.driver_data_collection, data_orchestrator.relation_data_collection, data, starting_date, folder_name, "1")
             point_1_saved = True
-
+    
+    data_orchestrator.train_data_collection.load_train_breaks_and_faults(train_faults, last_faults)
     save_realisation_data(data, folder_name + '/output', "realisation_data_2.csv")
     monthly_summary_of_driver_hours(data_orchestrator.driver_data_collection, data_orchestrator.relation_data_collection, data, starting_date, folder_name, "2")
     data_orchestrator.output_to_csv(folder_name + '/output')
@@ -1097,7 +1124,7 @@ def main(find_vendors, folder_name, data_count_1=5000, data_count_2=10000):
     pool = ThreadPool(THREAD_COUNT)
     base_url = "https://www.vagonweb.cz/razeni/index.php?rok=2024&lang=pl"
     data_orchestrator = DataOrchestrator()
-    if find_vendors == True:
+    if find_vendors is True:
         links = get_links(base_url)
         vendors, pageCounts = multithreaded_get_vendors_and_pagecounts(pool, links)
     else:
@@ -1110,6 +1137,7 @@ def main(find_vendors, folder_name, data_count_1=5000, data_count_2=10000):
         data_orchestrator.input_from_csv("data/" + folder_name)
     else:
         os.makedirs("data/" + folder_name)
+        os.makedirs("data/" + folder_name + "/output")
         multithreaded_get_vendors_data(pool, vendors, pageCounts, data_orchestrator)
         data_orchestrator.output_to_csv("data/" + folder_name)
 
