@@ -1,5 +1,7 @@
 
 
+USE HD_lab_db
+GO
 
 DROP TABLE Awaria;
 DROP TABLE Realizacja;
