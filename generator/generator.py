@@ -211,7 +211,7 @@ class ThreadedTrainDataCollection:
         df = pd.DataFrame({
             "Train Title": self.train_titles,
             "Last Fault": self.last_fault,
-            "Is Broken": self.is_broken
+            "Is Broken": [1 if is_broken else 0 for is_broken in self.is_broken]
         })
 
         df.index.name = "Index"
@@ -954,7 +954,7 @@ def save_fault_data(data, folder_name, file_name):
     })
 
     df.index.name = "Index"
-    df.to_csv(folder_name + "/" + file_name)
+    df.to_csv(folder_name + "/" + file_name, sep=";")
 
 
 def gender_string_from_pesel(pesel):
