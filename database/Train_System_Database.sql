@@ -1,5 +1,5 @@
--- CREATE DATABASE HD_lab_db;
--- GO
+CREATE DATABASE HD_lab_db;
+GO
 
 USE HD_lab_db
 GO
