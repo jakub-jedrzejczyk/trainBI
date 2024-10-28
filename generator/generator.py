@@ -878,7 +878,7 @@ def generate_single_realisation(data_object, current_day):
     real_times = []
     faults = []
     is_broken = False
-    last_fault = datetime.datetime("1900-01-01")
+    last_fault = datetime.datetime.strptime("1900-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
     overall_delay = 0
     fault_caused_delay = 0
     # number of times a day has passed during the relation
@@ -1038,8 +1038,19 @@ def monthly_summary_of_driver_hours(driver_data_collection, relation_data_collec
             "Driver Phone Number": driver_data_collection.driver_phone_numbers
         })
 
-        df.to_csv(folder_name + "/output/" + "driver_hours_" + csv_number + "_" + str(current_year) + "_" + str(current_month) + "_" + ".csv", index=False)
+        df.to_csv(folder_name + "/" + "driver_hours_" + csv_number + "_" + str(current_year) + "_" + str(current_month) + "_" + ".csv", index=False)
 
+
+def save_real_realisation_data(data_count, data_orchestrator, starting_date, folder_name, train_faults, last_faults, data, faults):
+    os.makedirs(folder_name + '/output/' + str(data_count), exist_ok=True)
+    print("Reached " + str(data_count) + " data points, saving realisation data...")
+    data_orchestrator.train_data_collection.load_train_breaks_and_faults(train_faults, last_faults)
+    save_realisation_data(data, folder_name + '/output/' + str(data_count) + '/', "realisation_data.csv")
+    print("Saving faults data...")
+    save_fault_data(faults, folder_name + '/output/' + str(data_count), "fault_data.csv")
+    print("Saving monthly summary of driver hours...")
+    monthly_summary_of_driver_hours(data_orchestrator.driver_data_collection, data_orchestrator.relation_data_collection, data, starting_date, folder_name + '/output/' + str(data_count), "1")
+    data_orchestrator.output_to_csv(folder_name + '/output/' + str(data_count))
 
 
 def generate_real_realisations(threadpool, data_orchestrator, data_count_1, data_count_2, starting_date, folder_name):
@@ -1048,7 +1059,7 @@ def generate_real_realisations(threadpool, data_orchestrator, data_count_1, data
     # consolidate the data by relation index found in realisation_data
     # find the maximum relation index
     max_relation_index = max([relation_index for section_index, relation_index in realisation_data])
-    train_data = data_orchestrator.train_data_collection.train_data
+    train_data = data_orchestrator.train_data_collection.train_titles
     relations = []
     for i in range(max_relation_index + 1):
         data_object = {
@@ -1104,20 +1115,15 @@ def generate_real_realisations(threadpool, data_orchestrator, data_count_1, data
                 if result[2] is True:
                     train_faults[trainIndex] = True
                     last_faults[trainIndex] = result[3]
+                else:
+                    train_faults[trainIndex] = False
 
         current_day += datetime.timedelta(days=1)
         if len(data) >= data_count_1 and not point_1_saved:
-            data_orchestrator.train_data_collection.load_train_breaks_and_faults(train_faults, last_faults)
-            save_realisation_data(data, folder_name + '/output', "realisation_data_1.csv")
-            save_fault_data(faults, folder_name + '/output', "fault_data_1.csv")
-            monthly_summary_of_driver_hours(data_orchestrator.driver_data_collection, data_orchestrator.relation_data_collection, data, starting_date, folder_name, "1")
+            save_real_realisation_data(data_count_1, data_orchestrator, starting_date, folder_name, train_faults, last_faults, data, faults)
             point_1_saved = True
     
-    data_orchestrator.train_data_collection.load_train_breaks_and_faults(train_faults, last_faults)
-    save_realisation_data(data, folder_name + '/output', "realisation_data_2.csv")
-    monthly_summary_of_driver_hours(data_orchestrator.driver_data_collection, data_orchestrator.relation_data_collection, data, starting_date, folder_name, "2")
-    data_orchestrator.output_to_csv(folder_name + '/output')
-    save_fault_data(faults, folder_name + '/output', "fault_data_2.csv")
+    save_real_realisation_data(data_count_2, data_orchestrator, starting_date, folder_name, train_faults, last_faults, data, faults)
 
 
 def main(find_vendors, folder_name, data_count_1=5000, data_count_2=10000):
